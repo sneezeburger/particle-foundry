@@ -1,3 +1,7 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Particle Foundry</title>
 <meta name="description" content="Interactive particle physics sandbox: Particle Life, plasma, N-body gravity and an ideal gas.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -231,13 +235,13 @@ body .lil-gui .title { font-family: var(--f-display); font-weight: 500; letter-s
   <span><kbd>H</kbd>hide panels</span>
 </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/lil-gui@0.19.2/dist/lil-gui.umd.min.js"></script>
+<script src="lil-gui.umd.min.js"></script>
 <script>
 (() => {
 'use strict';
 
 /* ================= state ================= */
-const MAX = 5000;
+const MAX = 10000;
 const X = new Float32Array(MAX), Y = new Float32Array(MAX);
 const VX = new Float32Array(MAX), VY = new Float32Array(MAX);
 const AX = new Float32Array(MAX), AY = new Float32Array(MAX);
@@ -248,13 +252,13 @@ let n = 0;
 const LM = new Float32Array(64); // Particle Life attraction table, 8x8 max
 
 const MODES = {
-  life:    { label: 'Particle Life', count: 1600, max: 3500, tool: 1500,
+  life:    { label: 'Particle Life', count: 1600, max: 10000, tool: 1500,
              blurb: 'Six species follow a table of attractions and repulsions. A few pairwise rules are enough to grow cells, worms and orbiting clusters.' },
-  plasma:  { label: 'Plasma', count: 1400, max: 3000, tool: 2500,
+  plasma:  { label: 'Plasma', count: 1400, max: 10000, tool: 2500,
              blurb: 'Heavy positive ions (orange) and light electrons (blue) under Coulomb forces. Raise the magnetic field to make them gyrate; drop the temperature to freeze a crystal.' },
-  gravity: { label: 'Gravity', count: 1200, max: 1600, tool: 1200,
+  gravity: { label: 'Gravity', count: 1200, max: 10000, tool: 1200,
              blurb: 'Every body pulls on every other in a direct N-body sum. Spin a disk around a heavy core, collide two galaxies, or let a cold cloud collapse.' },
-  gas:     { label: 'Ideal Gas', count: 1800, max: 4000, tool: 3000,
+  gas:     { label: 'Ideal Gas', count: 1800, max: 10000, tool: 3000,
              blurb: 'Hard disks colliding elastically. Every disk starts at the same speed; watch the histogram relax onto the Maxwell–Boltzmann curve within seconds.' },
 };
 
@@ -358,7 +362,7 @@ function spawnAt(x, y) {
     if (S.mode === 'life') add(px, py, 0, 0, (Math.random() * S.species) | 0, 1, 2.4, 0);
     else if (S.mode === 'plasma') { const q = (spawnFlip++ & 1) ? 1 : -1; addPlasma(px, py, q); }
     else if (S.mode === 'gravity') add(px, py, gauss() * 10, gauss() * 10, 0, 1, 1.6, 0);
-    else { const b = Math.random() * Math.PI * 2, v = stats.vrms || S.gasSpeed; add(px, py, Math.cos(b) * v, Math.sin(b) * v, 0, 1, S.gasRadius, 0); }
+    else { const b = Math.random() * Math.PI * 2, v = stats.vrms || S.gasSpeed; add(px, py, Math.cos(b) * v, Math.sin(b) * v, 0, 1, gasR, 0); }
   }
 }
 
@@ -525,8 +529,9 @@ function stepGravity(h) {
 }
 
 /* ================= mode: Ideal Gas ================= */
+let gasR = S.gasRadius; // radius at last reset; the slider only applies on release
 function setupGas() {
-  const r = S.gasRadius, v0 = S.gasSpeed, sc = S.gasScenario;
+  const r = gasR = S.gasRadius, v0 = S.gasSpeed, sc = S.gasScenario;
   if (sc === 'brownian') add(W / 2, H / 2, 0, 0, 0, 60, 16, 0);
   for (let k = 0; k < S.count; k++) {
     let x = r + Math.random() * (W - 2 * r), y = r + Math.random() * (H - 2 * r), v = v0;
@@ -554,7 +559,7 @@ function collide(i, j) {
 }
 const bigs = [];
 function stepGas(h) {
-  const g = S.gasGravity * 600, rs = S.gasRadius;
+  const g = S.gasGravity * 600, rs = gasR;
   AX.fill(0, 0, n); AY.fill(0, 0, n);
   applyTool();
   bigs.length = 0;
@@ -564,11 +569,11 @@ function stepGas(h) {
     const r = R[i];
     if (X[i] < r) { X[i] = r; VX[i] = Math.abs(VX[i]); } else if (X[i] > W - r) { X[i] = W - r; VX[i] = -Math.abs(VX[i]); }
     if (Y[i] < r) { Y[i] = r; VY[i] = Math.abs(VY[i]); } else if (Y[i] > H - r) { Y[i] = H - r; VY[i] = -Math.abs(VY[i]); }
-    if (r > rs * 1.01) bigs.push(i);
+    if (M[i] > 1) bigs.push(i);
   }
   buildGrid(2 * rs + 0.5);
   for (let i = 0; i < n; i++) {
-    if (R[i] > rs * 1.01) continue;
+    if (M[i] > 1) continue;
     const c = cellOf[i], cx = c % gCols, cy = (c / gCols) | 0;
     for (let oy = -1; oy <= 1; oy++) {
       const ny = cy + oy; if (ny < 0 || ny >= gRows) continue;
@@ -577,7 +582,7 @@ function stepGas(h) {
         const cc = ny * gCols + nx;
         for (let k = cellStart[cc], e = cellStart[cc + 1]; k < e; k++) {
           const j = cellItems[k];
-          if (j > i && R[j] <= rs * 1.01) collide(i, j);
+          if (j > i && M[j] === 1) collide(i, j);
         }
       }
     }
@@ -595,6 +600,27 @@ function reset() {
   SETUP[S.mode]();
   clearCanvas();
   vScale = 0; histMax = 0;
+}
+// gravity cores and the Brownian ball sit outside the particle count
+const isSpecial = i => (S.mode === 'gravity' && T[i] === 1) || (S.mode === 'gas' && M[i] > 1);
+function setCount() {
+  let specials = 0, plain = [], qsum = 0;
+  for (let i = 0; i < n; i++) { if (isSpecial(i)) specials++; else plain.push(i); qsum += Q[i]; }
+  if (!plain.length) return reset();
+  let have = plain.length;
+  while (have > S.count) { // drop random ordinary particles
+    const i = (Math.random() * n) | 0;
+    if (!isSpecial(i)) { removeAt(i); have--; }
+  }
+  const room = Math.min(S.count, MAX - specials);
+  for (; have < room; have++) {
+    const j = plain[(Math.random() * plain.length) | 0];
+    const x = Math.random() * W, y = Math.random() * H;
+    if (S.mode === 'life') add(x, y, 0, 0, (Math.random() * S.species) | 0, 1, 2.4, 0);
+    else if (S.mode === 'plasma') { const q = qsum > 0 ? -1 : 1; addPlasma(x, y, q); qsum += q; }
+    else if (S.mode === 'gravity') add(X[j] + gauss() * 3, Y[j] + gauss() * 3, VX[j], VY[j], T[j], 1, 1.6, 0); // clone a neighbour so disks keep their shape
+    else add(gasR + Math.random() * (W - 2 * gasR), gasR + Math.random() * (H - 2 * gasR), VX[j], VY[j], 0, 1, gasR, 0); // borrow an existing velocity to keep kT
+  }
 }
 
 /* ================= rendering ================= */
@@ -657,10 +683,9 @@ function render(paused) {
   const mode = S.mode, glow = S.glow;
   const bySpeed = S.colorBy === 'speed' || (S.colorBy === 'auto' && (mode === 'gravity' || mode === 'gas'));
   const inv = (SPEED_N - 1) / Math.max(1, vScale);
-  const bigR = S.gasRadius * 1.01;
   for (let i = 0; i < n; i++) {
     const x = X[i], y = Y[i];
-    if ((mode === 'gravity' && T[i] === 1) || (mode === 'gas' && R[i] > bigR)) {
+    if ((mode === 'gravity' && T[i] === 1) || (mode === 'gas' && M[i] > 1)) {
       const s = R[i] * 2 / 0.56;
       ctx.drawImage(SPR.ball, x - s / 2, y - s / 2, s, s);
       continue;
@@ -809,7 +834,7 @@ mCanvas.addEventListener('click', e => {
 const gui = new lil.GUI({ title: 'Controls' });
 const fSim = gui.addFolder('Simulation');
 fSim.add(S, 'mode', { 'Particle Life': 'life', 'Plasma': 'plasma', 'Gravity': 'gravity', 'Ideal Gas': 'gas' }).name('Mode').onChange(m => setMode(m));
-const cCount = fSim.add(S, 'count', 100, 4000, 50).name('Particles').onFinishChange(reset);
+const cCount = fSim.add(S, 'count', 100, 10000, 50).name('Particles').onChange(setCount);
 fSim.add(S, 'timeScale', 0.1, 2, 0.05).name('Time scale');
 fSim.add(S, 'paused').name('Paused').listen().onChange(syncPause);
 fSim.add({ reset }, 'reset').name('Reset  (R)');
@@ -913,6 +938,7 @@ canvas.addEventListener('wheel', e => {
   e.preventDefault();
   S.toolRadius = Math.max(40, Math.min(400, Math.round(S.toolRadius * (e.deltaY > 0 ? 0.9 : 1.1))));
 }, { passive: false });
+// capture phase: lil-gui controllers stopPropagation() on keydown, which would swallow hotkeys while one has focus
 window.addEventListener('keydown', e => {
   if (e.target.closest && e.target.closest('input, select, textarea')) return;
   if (e.key === ' ') { e.preventDefault(); S.paused = !S.paused; syncPause(); }
@@ -922,7 +948,7 @@ window.addEventListener('keydown', e => {
     hide ? gui.hide() : gui.show();
   }
   else if (['1', '2', '3', '4'].includes(e.key)) setMode(['life', 'plasma', 'gravity', 'gas'][+e.key - 1]);
-});
+}, true);
 
 function resize() {
   const oldW = W, oldH = H;
